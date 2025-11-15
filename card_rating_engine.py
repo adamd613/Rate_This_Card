@@ -34,6 +34,7 @@ class CardRatingEngine:
         """
         Rate all cards in the set based on existing deck composition.
         Returns list of tuples: (card_name, rating, explanation)
+        Includes cards already in the deck.
         """
         # Parse selected cards
         deck_cards = self._parse_selected_cards(selected_cards)
@@ -43,15 +44,11 @@ class CardRatingEngine:
         # Analyze current deck state
         deck_analysis = self._analyze_deck(deck_cards)
         
-        # Create set of deck card names for O(1) lookup
-        deck_card_names = {c["name"].lower() for c in deck_cards}
-        
-        # Rate each card in the set
+        # Rate each card in the set (including those already in deck)
         ratings = []
         for card in self.all_cards:
-            if card["name"].lower() not in deck_card_names:
-                rating, explanation = self._rate_card(card, deck_cards, deck_analysis)
-                ratings.append((card["name"], rating, explanation, card))
+            rating, explanation = self._rate_card(card, deck_cards, deck_analysis)
+            ratings.append((card["name"], rating, explanation, card))
         
         # Sort by rating (descending)
         ratings.sort(key=lambda x: x[1], reverse=True)
