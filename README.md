@@ -1,6 +1,21 @@
 # MTG Draft Deck Rating Engine
 
-A comprehensive tool to craft the perfect MTG draft deck in real-time during drafting sessions.
+A comprehensive tool to craft the perfect MTG draft deck in real-time during drafting sessions. Choose between CLI or GUI interface.
+
+## Quick Start
+
+### 🚀 Easiest Way: Double-Click Launcher
+Simply **double-click `launch_gui.bat`** to launch the GUI!
+- Automatically installs Python if needed
+- Installs required packages
+- Single-click, no setup required
+
+### Alternative: Command Line
+```bash
+python main.py           # CLI interface
+python gui.py            # GUI interface
+python launcher.py       # Choose interface (CLI or GUI)
+```
 
 ## Features
 
@@ -10,7 +25,8 @@ A comprehensive tool to craft the perfect MTG draft deck in real-time during dra
 - **Creature/Spell Balance**: Maintains optimal deck composition (~65% creatures in limited)
 - **Synergy Detection**: Identifies keyword synergies, creature types, and theme synergies
 - **Limited Format Power Level**: Evaluates cards specifically for limited draft gameplay
-- **Metagame Awareness**: Considers set-specific themes and mechanics
+- **All Cards Rated**: Get ratings for every card in the set, including those in your deck
+- **Real-Time Performance**: Optimized caching for fast rating updates
 
 ### 📊 Comprehensive Deck Analysis
 - Mana curve visualization
@@ -34,66 +50,94 @@ A comprehensive tool to craft the perfect MTG draft deck in real-time during dra
   - Power/toughness for creatures
   - Rarity information
 
+### 🖥️ Dual Interface Options
+
+#### GUI (Graphical User Interface)
+- Visual card list with search functionality
+- Color-coded ratings (Green 9-10, Blue 7-8, Orange 5-6, Red <4)
+- Double-click cards to add to deck
+- Real-time deck statistics dashboard
+- Save/load decks with simple dialogs
+
+#### CLI (Command Line Interface)
+- Terminal-based interface with colored output
+- Browse top 20 recommendations
+- Full-featured deck management
+- Good for server/remote use
+
 ## How to Use
 
-### Installation
+### Installation (One-Time Setup)
 
-1. Navigate to the project directory:
+If using the launcher `.bat` file, nothing needed! It handles everything.
+
+Otherwise:
 ```bash
 cd "Rate_This_Card"
-```
-
-2. Install dependencies:
-```bash
 pip install -r requirements.txt
 ```
 
-### Running the Application
+### Running the GUI Application
 
+#### Option 1: Double-Click Launcher (Recommended)
+Simply double-click `launch_gui.bat` - that's it!
+
+#### Option 2: Python Command
 ```bash
-python main.py
+python gui.py
 ```
 
-Or if you have Python in your PATH:
+#### Option 3: Create Desktop Shortcut
+Right-click `launch_gui.bat` → Send to → Desktop (create shortcut)
+
+### Running the CLI Application
+
 ```bash
 python main.py
 ```
 
 ### Workflow During Draft
 
+#### GUI Workflow:
 1. **Select a Set**: Choose which MTG set you're drafting from
-   - Search by set code (e.g., MOM, DMU, BRO)
-   - The app will fetch and cache all cards from that set
+   - Use the search box or dropdown menu
+   - Click "Load Set" to fetch cards
+   
+2. **Build Your Deck**: Add cards as you draft
+   - Type card name and click "Add" or press Enter
+   - Or double-click cards from the "Cards in Set" list
+   - View your deck on the left side
 
-2. **Add Selected Cards**: Build your card list as you draft
-   - Type card names as you pick them
-   - Use fuzzy matching for quick input
-   - View your current deck at any time
+3. **Rate Cards**: Click "Rate Cards" to get recommendations
+   - All cards get color-coded ratings
+   - Highest-rated cards appear first
+   - Search to filter the list
+   - Double-click any card to add to deck
 
-3. **Get Recommendations**: Ask for card ratings
-   - See top 20 recommendations with ratings (1-10)
-   - Understand why each card is recommended
-   - Browse detailed card information
-   - Add recommended cards directly
+4. **Track Statistics**: Bottom panel shows real-time analysis
+   - Deck size, creature count, mana curve
+   - Color distribution
+   - Detected synergies and themes
 
-4. **Track Your Deck**: Monitor statistics
-   - View mana curve
-   - Check color distribution
-   - See detected themes and synergies
-   - Ensure creature/spell balance
+5. **Save/Load**: Buttons to persist your work
+   - Save current deck at any time
+   - Load previous drafts
 
-5. **Save Your Work**: Keep your drafts
-   - Save completed or in-progress decks
-   - Load previous drafts to continue or analyze
+#### CLI Workflow:
+1. Select a set from the menu
+2. Add cards using the command line
+3. View ratings for recommendations
+4. View statistics to monitor deck health
+5. Save when finished
 
-## Rating Factors
+## Rating System
 
-Each card receives a 1-10 rating based on:
+Cards are rated 1-10 based on:
 
 ### Mana Curve Fit (±2.0 points)
-- Cards at needed mana costs get big boosts
-- Over-represented mana costs get penalties
-- Aims for: 2-3 one-mana, 3-4 two-mana, etc.
+- Cards at needed mana costs get boosts
+- Over-represented costs get penalties
+- Targets: 2-3 one-mana, 3-4 two-mana, etc.
 
 ### Color Synergy (±1.5 points)
 - Cards in your main colors get bonuses
@@ -110,140 +154,94 @@ Each card receives a 1-10 rating based on:
 - Theme synergies
 
 ### Limited Power Level (0-1.5 points)
-- Rates removal spells highly
+- Removal spells rated highly
 - Card draw is valuable
-- Good stats-to-cost ratio
+- Good stats-to-cost ratio rewarded
 
 ### Deck Completion (0-1 points)
 - Bonus for cards when deck is under 40 cards
 - Encourages filling your deck
 
-## Example Session
+## Caching & Performance
 
-```
-=== MTG Draft Deck Rater ===
-1. Select a set to draft from
-2. Add/update selected cards
-3. Rate remaining cards
-4. View deck statistics
-5. Save deck
-6. Load deck
-7. Exit
+- **First load**: ~20-30 seconds to fetch set data from Scryfall
+- **Subsequent loads**: Instant (cached locally)
+- **Card ratings**: ~1-2 seconds (optimized with pre-computed caches)
+- **Search**: Real-time, no delay
 
-Enter your choice (1-7): 1
-
-Available sets:
- 1. March of the Machine (MOM)
- 2. Phyrexia: All Will Be One (ONE)
- 3. The Brothers' War (BRO)
-... and more
-
-Enter set code (e.g., MOM) or search term: MOM
-
-Fetching March of the Machine cards from Scryfall...
-✓ Loaded 254 cards from March of the Machine
-
-Enter your choice (1-7): 2
-
-Enter command: add
-Enter card name: Jetmir, Nexus of Revels
-✓ Added Jetmir, Nexus of Revels
-
-Enter command: add
-Enter card name: Anointed Peacekeeper
-✓ Added Anointed Peacekeeper
-
-Enter command: done
-
-Enter your choice (1-7): 3
-
-Analyzing your deck and rating cards...
-
-Top 20 recommendations for your deck:
-
- 1.  8.5/10 Gleaming Barrier         [1W]            Creature — Wall
-      → good mana curve fit, color synergy
- 2.  8.3/10 Intrepid Adversary       [1W]            Creature — Human
-      → strong limited card, color synergy
- 3.  8.1/10 Combat Courier           [W]             Creature — Human
-      → good mana curve fit
-...
-```
-
-## Caching
-
-The application caches all fetched set data locally in the `cache/` directory:
-- Set data is cached as JSON files (e.g., `MOM.json`)
-- Decks are saved as `.deck` files
-- First load of a set requires internet; subsequent loads are instant
+Cache files stored in `cache/` directory:
+- Set data as JSON files (e.g., `MOM.json`)
+- Decks as `.deck` files
 
 ## Troubleshooting
 
-### "Could not fetch sets. Check your internet connection."
-- Verify you have an active internet connection
-- Scryfall API might be temporarily unavailable
-- Try again in a few moments
+### Application won't start
+- Ensure Python is installed: `python --version`
+- Try the launcher `.bat` file - it handles Python auto-installation
+- Check internet connection for first-time set loading
 
-### Card not found when adding
-- Try typing partial card names
-- The fuzzy matcher will find close matches
-- Check spelling and set membership
+### Cards not showing up
+- Make sure set loaded successfully (status message says "✓ Loaded N cards")
+- Try searching by partial card name
+- Check that you're in the correct set
 
-### Application is slow
-- First load of a set requires API calls (~20-30 seconds)
-- Subsequent loads use cached data and are instant
-- Ratings take a few seconds to compute (normal)
+### Ratings seem slow
+- First rating takes 1-2 seconds (normal)
+- Subsequent ratings use cached data and are faster
+- Large sets (500+ cards) may take a moment
 
-## Technical Details
-
-### Architecture
-
-- **`scryfall_api.py`**: Integrates with Scryfall REST API
-- **`card_rating_engine.py`**: Implements rating algorithm
-- **`main.py`**: CLI application and user interface
-
-### API Integration
-
-Uses the free **Scryfall API** (https://scryfall.com/docs/api):
-- No authentication required
-- Respects rate limiting
-- Returns comprehensive card data
-
-### Rating Algorithm
-
-The rating engine considers:
-1. **Mana Curve Distribution** - Ensures playable cards at each stage
-2. **Color Constraints** - Optimizes for mana consistency
-3. **Creature/Spell Split** - Maintains combat-focused strategy
-4. **Keyword Synergies** - Amplifies theme payoffs
-5. **Power Level** - Prioritizes efficient cards
-6. **Creature Types** - Enables tribal synergies
-
-## Tips for Best Results
-
-1. **Add cards as you draft** - Update recommendations in real-time
-2. **Review top 20 suggestions** - Usually contains best picks
-3. **Check card details** - Understand the recommendations
-4. **Use "View statistics"** - Monitor deck health
-5. **Start with set's main themes** - Most sets have 2-3 main archetypes
-
-## Known Limitations
-
-- Ratings are for **Limited format** (can't account for unknown future cards)
-- Card interactions are keyword-based (not exhaustive)
-- Does not predict future picks
-- Metagame shifts during a draft are not predicted
-- No support for custom card data (only Scryfall)
+### Card not found when searching
+- Try partial matching
+- Check spelling
+- Verify card is in the selected set
 
 ## Requirements
 
-- Python 3.8+
-- Internet connection (first use per set)
-- ~500MB disk space for full set cache
+- Python 3.8+ (auto-installed by launcher if needed)
+- Internet connection (first load per set)
+- Windows/Mac/Linux with tkinter support
 
-## License
+## Keyboard Shortcuts
 
-This tool uses data from Scryfall, which is maintained by Scryfall LLC. See https://scryfall.com/ for more information.
+### GUI
+- **Enter**: Add card (when entry field focused)
+- **Double-click**: Add card from list
+- **Ctrl+C**: Quit application
+
+### CLI
+- Type commands directly in menu
+- Type `done` to finish adding cards
+- Type `exit` or `quit` to leave
+
+## File Structure
+
+```
+Rate_This_Card/
+├── gui.py                    # GUI application
+├── main.py                   # CLI application
+├── launcher.py               # Interface chooser
+├── launch_gui.bat           # Single-click launcher
+├── card_rating_engine.py    # Rating algorithm
+├── scryfall_api.py          # Scryfall API integration
+├── config.py                # Configuration
+├── requirements.txt         # Python dependencies
+└── cache/                   # Cached set data
+```
+
+## Tips for Best Results
+
+1. **Add cards as you draft** - Keep updating for real-time recommendations
+2. **Review top-rated cards** - Usually the best picks
+3. **Check the synergies** - Look for themes in your deck
+4. **Monitor deck health** - Use statistics to stay balanced
+5. **Learn your set** - Most sets have 2-3 main archetypes
+
+## Known Limitations
+
+- Ratings optimized for Limited format
+- Keyword-based synergies (not exhaustive)
+- Cannot predict future picks or metagame shifts
+- No support for custom card data (Scryfall only)
 
 ## Future Enhancements
 
@@ -252,6 +250,9 @@ Possible improvements:
 - [ ] Support for sealed format
 - [ ] Curve optimization suggestions
 - [ ] Card combo database
-- [ ] Graphical UI
 - [ ] Integration with draft tracking websites
 - [ ] Export to MTG Arena/Cockatrice
+
+## License
+
+This tool uses data from Scryfall (https://scryfall.com/). See Scryfall's terms for usage rights.
