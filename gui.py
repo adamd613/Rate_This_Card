@@ -142,41 +142,65 @@ class MTGDraftRaterGUI:
     
     def _create_recommendations_panel(self, parent):
         """Create card recommendations panel"""
-        rec_frame = ttk.LabelFrame(parent, text="Card Recommendations", padding=10)
+        rec_frame = ttk.LabelFrame(parent, text="Cards in Set", padding=10)
         rec_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         
-        # Rating button
-        ttk.Button(rec_frame, text="Rate Cards", command=self._rate_cards_clicked).pack(fill=tk.X, pady=(0, 10))
+        # Search and rate controls
+        control_frame = ttk.Frame(rec_frame)
+        control_frame.pack(fill=tk.X, pady=(0, 10))
         
-        # Results display
-        self.rec_text = scrolledtext.ScrolledText(
-            rec_frame,
+        ttk.Label(control_frame, text="Search:").pack(side=tk.LEFT, padx=5)
+        
+        self.card_search_var = tk.StringVar()
+        self.card_search_var.trace('w', self._update_card_list)
+        search_entry = ttk.Entry(control_frame, textvariable=self.card_search_var, width=20)
+        search_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        
+        ttk.Button(control_frame, text="Rate Cards", command=self._rate_cards_clicked).pack(side=tk.LEFT, padx=5)
+        
+        # Results display with tree view for better card listing
+        tree_frame = ttk.Frame(rec_frame)
+        tree_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Create treeview
+        scrollbar = ttk.Scrollbar(tree_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.card_tree = ttk.Treeview(
+            tree_frame,
+            columns=("Rating", "Mana", "Type"),
             height=25,
-            width=50,
-            state=tk.DISABLED,
-            wrap=tk.WORD
+            yscrollcommand=scrollbar.set
         )
-        self.rec_text.pack(fill=tk.BOTH, expand=True)
+        self.card_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.card_tree.yview)
+        
+        # Configure columns
+        self.card_tree.heading('#0', text='Card Name')
+        self.card_tree.heading('Rating', text='Rating')
+        self.card_tree.heading('Mana', text='Mana')
+        self.card_tree.heading('Type', text='Type')
+        
+        self.card_tree.column('#0', width=200)
+        self.card_tree.column('Rating', width=50, anchor='center')
+        self.card_tree.column('Mana', width=50, anchor='center')
+        self.card_tree.column('Type', width=100)
+        
+        # Store all cards and ratings
+        self.all_card_list = []  # Full list of cards
+        self.current_card_ratings = {}  # Map of card_name -> rating
         
         # Configure text tags for colors
-        self.rec_text.tag_config("excellent", foreground="#00AA00")  # Green
-        self.rec_text.tag_config("good", foreground="#0088FF")       # Blue
-        self.rec_text.tag_config("okay", foreground="#FFAA00")       # Orange
-        self.rec_text.tag_config("weak", foreground="#FF6600")       # Red
-        self.rec_text.tag_config("header", font=("Arial", 11, "bold"))
-        self.rec_text.tag_config("title", font=("Arial", 10, "bold"), foreground="#0066FF")
+        self.card_tree.tag_configure("excellent", foreground="#00AA00")  # Green
+        self.card_tree.tag_configure("good", foreground="#0088FF")       # Blue
+        self.card_tree.tag_configure("okay", foreground="#FFAA00")       # Orange
+        self.card_tree.tag_configure("weak", foreground="#FF6600")       # Red
         
-        # Add selected recommendation
-        add_frame = ttk.Frame(rec_frame)
-        add_frame.pack(fill=tk.X, pady=10)
+        self.card_tree.bind('<Double-1>', self._add_card_from_tree)
         
-        ttk.Label(add_frame, text="Add card #:").pack(side=tk.LEFT, padx=5)
-        
-        self.rec_num_var = tk.StringVar()
-        self.rec_num_entry = ttk.Entry(add_frame, textvariable=self.rec_num_var, width=5)
-        self.rec_num_entry.pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(add_frame, text="Add", command=self._add_recommendation).pack(side=tk.LEFT, padx=2)
+        # Info label
+        self.card_info_var = tk.StringVar(value="Load a set to see cards")
+        ttk.Label(rec_frame, textvariable=self.card_info_var, foreground="blue").pack(fill=tk.X, pady=(5, 0))
     
     def _create_stats_panel(self, parent):
         """Create statistics panel"""
@@ -276,10 +300,14 @@ class MTGDraftRaterGUI:
                 self.current_set = selected_set['name']
                 self.rating_engine = CardRatingEngine(parsed_cards)
                 self.selected_cards = []
+                self.all_card_list = parsed_cards
+                self.current_card_ratings = {}
                 self.deck_listbox.delete(0, tk.END)
                 self._update_deck_display()
+                self._update_card_list()
                 
                 self.set_status_var.set(f"✓ Loaded {len(parsed_cards)} cards from {self.current_set}")
+                self.card_info_var.set(f"{len(parsed_cards)} cards available")
             else:
                 messagebox.showerror("Error", f"Could not load cards for {selected_set['code']}")
                 self.set_status_var.set("Failed to load set")
@@ -389,25 +417,63 @@ class MTGDraftRaterGUI:
             messagebox.showwarning("Warning", "Add some cards first to get recommendations")
             return
         
-        self.rec_text.config(state=tk.NORMAL)
-        self.rec_text.delete(1.0, tk.END)
-        self.rec_text.insert(tk.END, "Rating cards...\n", "title")
-        self.rec_text.config(state=tk.DISABLED)
+        self.card_info_var.set("Rating cards...")
         self.root.update()
         
         def rate():
-            self.current_ratings = self.rating_engine.rate_cards(self.selected_cards)
+            ratings = self.rating_engine.rate_cards(self.selected_cards)
+            self.current_card_ratings = {name: rating for name, rating, _, _ in ratings}
+            self._update_card_list()
             
-            # Display results
-            self.rec_text.config(state=tk.NORMAL)
-            self.rec_text.delete(1.0, tk.END)
+            # Count top recommendations
+            top_count = len([r for r in ratings if r[1] >= 7])
+            self.card_info_var.set(f"✓ Ratings updated! {top_count} excellent cards found")
+        
+        thread = threading.Thread(target=rate, daemon=True)
+        thread.start()
+    
+    def _update_card_list(self, *args):
+        """Update card list display with search and ratings"""
+        search_term = self.card_search_var.get().lower()
+        
+        # Clear tree
+        for item in self.card_tree.get_children():
+            self.card_tree.delete(item)
+        
+        if not self.all_card_list:
+            return
+        
+        # Filter cards
+        filtered_cards = []
+        for card in self.all_card_list:
+            name = card.get("name", "")
+            card_type = card.get("type_line", "")
+            oracle_text = card.get("oracle_text", "")
             
-            title = f"Top 20 Recommendations for {self.current_set}\n"
-            self.rec_text.insert(tk.END, title, "header")
-            self.rec_text.insert(tk.END, "=" * 60 + "\n\n")
+            if search_term and not any(search_term in text.lower() for text in [name, card_type, oracle_text]):
+                continue
             
-            for rank, (name, rating, explanation, card) in enumerate(self.current_ratings[:20], 1):
-                # Determine tag based on rating
+            filtered_cards.append(card)
+        
+        # Sort: rated cards first, then by name
+        def sort_key(card):
+            name = card.get("name", "")
+            rating = self.current_card_ratings.get(name, -1)
+            # Sort by rating descending, then by name
+            return (-rating, name)
+        
+        filtered_cards.sort(key=sort_key)
+        
+        # Add to tree
+        for idx, card in enumerate(filtered_cards):
+            name = card.get("name", "Unknown")
+            mana_cost = card.get("mana_cost", "").replace("{", "[").replace("}", "]") or "—"
+            card_type = card.get("type_line", "")[:30]  # Truncate long types
+            rating = self.current_card_ratings.get(name, None)
+            
+            # Determine tag based on rating
+            tag = ""
+            if rating is not None:
                 if rating >= 8:
                     tag = "excellent"
                 elif rating >= 6:
@@ -416,40 +482,42 @@ class MTGDraftRaterGUI:
                     tag = "okay"
                 else:
                     tag = "weak"
-                
-                # Format card info
-                mana_str = card.get("mana_cost", "").replace("{", "[").replace("}", "]") or "0"
-                card_type = card.get("type_line", "Unknown")
-                
-                line = f"{rank:2}. {rating:4.1f}/10  {name:25} {mana_str:15} {card_type}\n"
-                self.rec_text.insert(tk.END, line, tag)
-                
-                exp_line = f"      → {explanation}\n\n"
-                self.rec_text.insert(tk.END, exp_line)
             
-            self.rec_text.config(state=tk.DISABLED)
+            rating_str = f"{rating:.1f}" if rating is not None else "—"
+            
+            self.card_tree.insert(
+                '',
+                tk.END,
+                text=name,
+                values=(rating_str, mana_cost, card_type),
+                tags=(tag,)
+            )
         
-        thread = threading.Thread(target=rate, daemon=True)
-        thread.start()
+        # Update info
+        if not search_term:
+            self.card_info_var.set(f"Showing all {len(filtered_cards)} cards (double-click to add)")
+        else:
+            self.card_info_var.set(f"Showing {len(filtered_cards)} of {len(self.all_card_list)} cards")
     
-    def _add_recommendation(self):
-        """Add a recommended card"""
-        try:
-            num = int(self.rec_num_var.get())
-            if 1 <= num <= len(self.current_ratings):
-                card_name = self.current_ratings[num - 1][0]
-                if card_name not in self.selected_cards and len(self.selected_cards) < 40:
-                    self.selected_cards.append(card_name)
-                    self.rec_num_var.set("")
-                    self._update_deck_display()
-                    self._update_stats()
-                    messagebox.showinfo("Success", f"Added {card_name}")
-                else:
-                    messagebox.showwarning("Warning", "Card already in deck or deck is full")
-            else:
-                messagebox.showerror("Error", f"Enter number between 1 and {len(self.current_ratings)}")
-        except ValueError:
-            messagebox.showerror("Error", "Please enter a valid number")
+    def _add_card_from_tree(self, event):
+        """Add card from tree view (double-click)"""
+        selection = self.card_tree.selection()
+        if not selection:
+            return
+        
+        item = selection[0]
+        card_name = self.card_tree.item(item, 'text')
+        
+        if len(self.selected_cards) >= 40:
+            messagebox.showwarning("Warning", "Deck is full (40 cards)")
+            return
+        
+        if card_name not in self.selected_cards:
+            self.selected_cards.append(card_name)
+            self._update_deck_display()
+            self._update_stats()
+        else:
+            messagebox.showinfo("Info", "Card already in deck")
     
     def _update_stats(self):
         """Update deck statistics"""
