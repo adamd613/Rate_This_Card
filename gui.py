@@ -287,12 +287,16 @@ class MTGDraftRaterGUI:
             cards = ScryfallAPI.get_set_cards(selected_set['code'])
             
             if cards:
-                # Parse cards
+                # Parse cards and deduplicate by name
                 parsed_cards = []
+                seen_cards = set()
                 for card in cards:
                     try:
                         parsed = ScryfallAPI.parse_card_data(card)
-                        parsed_cards.append(parsed)
+                        card_name = parsed.get("name", "")
+                        if card_name not in seen_cards:
+                            seen_cards.add(card_name)
+                            parsed_cards.append(parsed)
                     except:
                         pass
                 
