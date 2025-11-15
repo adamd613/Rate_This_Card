@@ -12,6 +12,23 @@ class CardRatingEngine:
         """Initialize the rating engine with all cards from the set"""
         self.all_cards = set_cards
         self.card_lookup = {card["name"].lower(): card for card in set_cards}
+        
+        # Pre-process creature types and keywords for faster lookup
+        self._creature_type_cache = {}
+        self._keyword_cache = {}
+        self._power_toughness_cache = {}
+        for card in set_cards:
+            card_name = card["name"]
+            self._creature_type_cache[card_name] = self._extract_creature_types(card["type_line"])
+            self._keyword_cache[card_name] = set(card.get("keywords", []))
+            if card.get("is_creature"):
+                try:
+                    self._power_toughness_cache[card_name] = (
+                        float(card.get("power", 0)),
+                        float(card.get("toughness", 0))
+                    )
+                except (ValueError, TypeError):
+                    self._power_toughness_cache[card_name] = (0, 0)
     
     def rate_cards(self, selected_cards: List[str], format_legality: str = "draft") -> List[tuple]:
         """
@@ -26,10 +43,13 @@ class CardRatingEngine:
         # Analyze current deck state
         deck_analysis = self._analyze_deck(deck_cards)
         
+        # Create set of deck card names for O(1) lookup
+        deck_card_names = {c["name"].lower() for c in deck_cards}
+        
         # Rate each card in the set
         ratings = []
         for card in self.all_cards:
-            if card["name"].lower() not in [c["name"].lower() for c in deck_cards]:
+            if card["name"].lower() not in deck_card_names:
                 rating, explanation = self._rate_card(card, deck_cards, deck_analysis)
                 ratings.append((card["name"], rating, explanation, card))
         
@@ -85,26 +105,18 @@ class CardRatingEngine:
             "color_identity": set(),
             "keywords": Counter(),
             "mana_curve": {},
-            "power_values": [],
             "avg_cmc": 0,
-            "creature_count": 0,
-            "instant_sorcery_count": 0,
             "synergies": [],
         }
         
         total_cmc = 0
+        creature_count = 0
         
         for card in deck_cards:
             if card["is_creature"]:
                 analysis["creatures"] += 1
-                analysis["creature_count"] += 1
-                if card.get("power"):
-                    try:
-                        analysis["power_values"].append(float(card["power"]))
-                    except (ValueError, TypeError):
-                        pass
+                creature_count += 1
             elif card["is_instant"] or card["is_sorcery"]:
-                analysis["instant_sorcery_count"] += 1
                 analysis["spells"] += 1
             
             if card["is_land"]:
@@ -114,21 +126,20 @@ class CardRatingEngine:
             total_cmc += cmc
             analysis["cmc_distribution"][int(cmc)] += 1
             
-            # Build mana curve data
-            if int(cmc) <= 5:
-                mana_bin = int(cmc)
-            else:
-                mana_bin = "6+"
+            # Build mana curve data - simplified
+            mana_bin = min(int(cmc), 6) if int(cmc) <= 5 else "6+"
             analysis["mana_curve"][mana_bin] = analysis["mana_curve"].get(mana_bin, 0) + 1
             
             # Color analysis
-            for color in card["colors"]:
+            colors = card.get("colors", [])
+            for color in colors:
                 analysis["colors"][color] += 1
-            for color in card["color_identity"]:
+            for color in card.get("color_identity", []):
                 analysis["color_identity"].add(color)
             
-            # Keyword analysis
-            for keyword in card.get("keywords", []):
+            # Keyword analysis - use pre-computed cache
+            card_name = card["name"]
+            for keyword in self._keyword_cache.get(card_name, set()):
                 analysis["keywords"][keyword] += 1
         
         if len(deck_cards) > 0:
@@ -142,27 +153,24 @@ class CardRatingEngine:
     def _detect_synergies(self, deck_cards: List[Dict[str, Any]], analysis: Dict) -> List[str]:
         """Detect synergies and themes in the deck"""
         synergies = []
-        
-        # Check keyword frequencies
         keyword_counts = analysis["keywords"]
-        if keyword_counts.get("flying", 0) >= 3:
-            synergies.append("flying theme")
-        if keyword_counts.get("lifelink", 0) >= 2:
-            synergies.append("lifelink synergy")
-        if keyword_counts.get("token", 0) >= 2:
-            synergies.append("token generation")
-        if keyword_counts.get("sacrifice", 0) >= 2:
-            synergies.append("sacrifice synergy")
-        if keyword_counts.get("graveyard", 0) >= 2:
-            synergies.append("graveyard synergy")
-        if keyword_counts.get("proliferate", 0) >= 1:
-            synergies.append("proliferate theme")
-        if keyword_counts.get("mill", 0) >= 2:
-            synergies.append("mill synergy")
-        if keyword_counts.get("draw", 0) >= 3:
-            synergies.append("card draw theme")
-        if keyword_counts.get("counterspell", 0) >= 2:
-            synergies.append("control theme")
+        
+        # Check keyword frequencies - early exit for common patterns
+        keyword_checks = [
+            ("flying", 3, "flying theme"),
+            ("lifelink", 2, "lifelink synergy"),
+            ("token", 2, "token generation"),
+            ("sacrifice", 2, "sacrifice synergy"),
+            ("graveyard", 2, "graveyard synergy"),
+            ("proliferate", 1, "proliferate theme"),
+            ("mill", 2, "mill synergy"),
+            ("draw", 3, "card draw theme"),
+            ("counterspell", 2, "control theme"),
+        ]
+        
+        for keyword, threshold, label in keyword_checks:
+            if keyword_counts.get(keyword, 0) >= threshold:
+                synergies.append(label)
         
         # Color-based synergies
         colors = list(analysis["color_identity"])
@@ -172,11 +180,10 @@ class CardRatingEngine:
             color_pair = "".join(sorted(colors))
             synergies.append(f"{color_pair} colors")
         
-        # Creature type detection
+        # Creature type detection - use cached types
         creature_types = []
         for card in deck_cards:
-            types = self._extract_creature_types(card["type_line"])
-            creature_types.extend(types)
+            creature_types.extend(self._creature_type_cache.get(card["name"], []))
         
         type_counts = Counter(creature_types)
         for ctype, count in type_counts.most_common(3):
@@ -342,37 +349,37 @@ class CardRatingEngine:
                         analysis: Dict) -> float:
         """Rate synergies with existing cards"""
         synergy_score = 0.0
-        
-        # Check keyword overlap
-        card_keywords = set(card.get("keywords", []))
         deck_keywords = analysis["keywords"]
         
+        # Check keyword overlap - use cached keywords
+        card_name = card["name"]
+        card_keywords = self._keyword_cache.get(card_name, set())
+        
         for keyword in card_keywords:
-            if keyword in deck_keywords and deck_keywords[keyword] > 0:
+            if deck_keywords.get(keyword, 0) > 0:
                 synergy_score += 1.0  # Big boost for keyword synergies
         
-        # Check creature type synergies
+        # Check creature type synergies - use cached types
         if card["is_creature"]:
-            card_types = set(self._extract_creature_types(card["type_line"]))
+            card_types = set(self._creature_type_cache.get(card_name, []))
             
+            # Pre-compute creature count instead of iterating
             for existing_card in deck_cards:
                 if existing_card["is_creature"]:
-                    existing_types = set(self._extract_creature_types(existing_card["type_line"]))
-                    shared_types = card_types & existing_types
-                    if shared_types:
+                    existing_types = set(self._creature_type_cache.get(existing_card["name"], []))
+                    if card_types & existing_types:
                         synergy_score += 0.5
+                        break  # Only count once per creature type match
         
-        # Check for card draw/advantage engines
-        if "draw" in card_keywords and "draw" in analysis["keywords"]:
-            synergy_score += 0.5
+        # Quick keyword synergy checks
+        draw_bonus = 0.5 if "draw" in card_keywords and deck_keywords.get("draw", 0) > 0 else 0
+        sacrifice_bonus = 1.0 if "sacrifice" in card_keywords and deck_keywords.get("sacrifice", 0) > 0 else 0
+        synergy_score += draw_bonus + sacrifice_bonus
         
-        # Check for sacrifice synergies
-        if "sacrifice" in card_keywords and "sacrifice" in analysis["keywords"]:
-            synergy_score += 1.0
-        
-        # Evasion synergy with combat tricks
-        if ("flying" in card_keywords or "evasion" in card_keywords or "menace" in card_keywords):
-            if analysis["keywords"].get("draw", 0) > 0 or analysis["keywords"].get("flying", 0) > 1:
+        # Evasion synergy - simplified
+        evasion_keywords = {"flying", "menace", "evasion"}
+        if card_keywords & evasion_keywords:
+            if deck_keywords.get("draw", 0) > 0 or deck_keywords.get("flying", 0) > 1:
                 synergy_score += 0.5
         
         return synergy_score
@@ -381,11 +388,11 @@ class CardRatingEngine:
         """Rate the power level of a card in limited"""
         score = 0.0
         
-        # Creatures with good stats
+        # Creatures with good stats - use cached data
         if card["is_creature"]:
-            try:
-                power = float(card.get("power", 0))
-                toughness = float(card.get("toughness", 0))
+            card_name = card["name"]
+            if card_name in self._power_toughness_cache:
+                power, toughness = self._power_toughness_cache[card_name]
                 cmc = card.get("cmc", 0)
                 
                 # Power/toughness per mana spent
@@ -400,20 +407,19 @@ class CardRatingEngine:
                     score -= 1.0
                 
                 # Evasive creatures are better
-                if card.get("keywords") and any(e in card.get("keywords", []) for e in ["flying", "menace", "trample"]):
+                card_keywords = self._keyword_cache.get(card_name, set())
+                if card_keywords & {"flying", "menace", "trample"}:
                     score += 0.5
-                
-            except (ValueError, TypeError):
-                pass
         
         # Removal spells are always good
         if card["is_instant"] or card["is_sorcery"]:
             oracle = card.get("oracle_text", "").lower()
-            if any(word in oracle for word in ["destroy", "exile", "damage", "discard", "counter"]):
+            # Use tuple lookup for faster word checking
+            if any(word in oracle for word in ("destroy", "exile", "damage", "discard", "counter")):
                 score += 1.5
             elif "draw" in oracle:
                 score += 1.0
-            elif "can't" in oracle or "prevent" in oracle:
+            elif any(phrase in oracle for phrase in ("can't", "prevent")):
                 score += 0.5
         
         return score

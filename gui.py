@@ -447,33 +447,33 @@ class MTGDraftRaterGUI:
         if not self.all_card_list:
             return
         
-        # Filter cards
+        # Filter cards efficiently
         filtered_cards = []
-        for card in self.all_card_list:
-            name = card.get("name", "")
-            card_type = card.get("type_line", "")
-            oracle_text = card.get("oracle_text", "")
-            
-            if search_term and not any(search_term in text.lower() for text in [name, card_type, oracle_text]):
-                continue
-            
-            filtered_cards.append(card)
+        if search_term:
+            for card in self.all_card_list:
+                name = card.get("name", "")
+                if search_term in name.lower():
+                    filtered_cards.append(card)
+                    continue
+                card_type = card.get("type_line", "")
+                if search_term in card_type.lower():
+                    filtered_cards.append(card)
+                    continue
+                oracle_text = card.get("oracle_text", "")
+                if search_term in oracle_text.lower():
+                    filtered_cards.append(card)
+        else:
+            filtered_cards = self.all_card_list
         
         # Sort: rated cards first, then by name
-        def sort_key(card):
-            name = card.get("name", "")
-            rating = self.current_card_ratings.get(name, -1)
-            # Sort by rating descending, then by name
-            return (-rating, name)
+        filtered_cards.sort(key=lambda c: (-self.current_card_ratings.get(c.get("name", ""), -1), c.get("name", "")))
         
-        filtered_cards.sort(key=sort_key)
-        
-        # Add to tree
-        for idx, card in enumerate(filtered_cards):
+        # Add to tree with minimal processing
+        for card in filtered_cards:
             name = card.get("name", "Unknown")
             mana_cost = card.get("mana_cost", "").replace("{", "[").replace("}", "]") or "—"
-            card_type = card.get("type_line", "")[:30]  # Truncate long types
-            rating = self.current_card_ratings.get(name, None)
+            card_type = card.get("type_line", "")[:30]
+            rating = self.current_card_ratings.get(name)
             
             # Determine tag based on rating
             tag = ""
@@ -494,7 +494,7 @@ class MTGDraftRaterGUI:
                 tk.END,
                 text=name,
                 values=(rating_str, mana_cost, card_type),
-                tags=(tag,)
+                tags=(tag,) if tag else ()
             )
         
         # Update info
